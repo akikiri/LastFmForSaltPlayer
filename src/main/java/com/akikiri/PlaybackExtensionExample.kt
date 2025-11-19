@@ -71,7 +71,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
             try {
                 val lastFm: LastFmService = LastFmService.defaultInstance()
                 lastFm.scrobble(artist, title)
-                WorkshopApi.ui.toast("提交scrobble 成功", WorkshopApi.Ui.ToastType.Success)
+//                WorkshopApi.ui.toast("提交scrobble 成功", WorkshopApi.Ui.ToastType.Success)
             } catch (e: Exception) {
                 hasScrobbled = false
                 WorkshopApi.ui.toast("提交scrobble 失败", WorkshopApi.Ui.ToastType.Error)
@@ -87,7 +87,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
             try {
                 val lastFm: LastFmService = LastFmService.defaultInstance()
                 lastFm.nowPlaying(artist, title)
-                WorkshopApi.ui.toast("提交nowplaying 成功", WorkshopApi.Ui.ToastType.Success)
+//                WorkshopApi.ui.toast("提交nowplaying 成功", WorkshopApi.Ui.ToastType.Success)
             } catch (e: Exception) {
                 WorkshopApi.ui.toast("提交nowplaying 失败", WorkshopApi.Ui.ToastType.Error)
             }

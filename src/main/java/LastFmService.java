@@ -58,8 +58,21 @@ public class LastFmService {
                     sessionStore.saveToken(token);
                     System.exit(0);
                 }
-                session = client.fetchSessionKey(token);
-                System.out.println("SessionKey 已保存：" + session);
+
+                try {
+                    session = client.fetchSessionKey(token);
+                    System.out.println("SessionKey 已保存：" + session);
+                } catch (Exception e) {
+                    System.err.println("获取 SessionKey 失败: " + e.getMessage());
+                    System.out.println("可能用户未完成授权，重新开始授权流程...");
+                    // 清除无效的token，重新获取新的token
+                    sessionStore.saveToken(null);
+                    token = client.getToken();
+                    client.openAuthPage(token);
+                    System.out.println("请完成授权后重新启动...");
+                    sessionStore.saveToken(token);
+                    System.exit(0);
+                }
             } else {
                 System.out.println("SessionKey 已加载：" + session);
             }
