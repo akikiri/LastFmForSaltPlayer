@@ -40,7 +40,7 @@ tasks.named("jar") {
         attributes["Plugin-Id"] = pluginId
         attributes["Plugin-Version"] = pluginVersion
         attributes["Plugin-Provider"] = pluginProvider
-        attributes["Plugin-OpenSource-Url"] = PluginOpenSourceUrl
+        attributes["Plugin-Open-Source-Url"] = PluginOpenSourceUrl
         attributes["Plugin-Description"] = PluginDescription
     }
 }
