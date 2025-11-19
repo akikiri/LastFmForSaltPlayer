@@ -1,0 +1,62 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.kotlin.jvm' version '2.0.21'
+    id 'org.jetbrains.kotlin.kapt' version '2.0.21'
+}
+
+
+repositories {
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+}
+
+dependencies {
+    compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
+    compileOnly libs.spw.workshop.api
+    kapt libs.spw.workshop.api
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    implementation 'com.squareup.okhttp3:okhttp:4.9.3'
+    implementation 'com.google.code.gson:gson:2.8.9'
+    implementation 'org:jaudiotagger:2.0.3'
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
+
+}
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+def pluginClass = "com.akikiri.MainPlugin"
+def pluginId = "akikiri_LastFm_scrobble"
+def pluginVersion = "0.0.1"
+def pluginProvider = "akikiri"
+
+tasks.named("jar") {
+    manifest {
+        attributes["Plugin-Class"] = pluginClass
+        attributes["Plugin-Id"] = pluginId
+        attributes["Plugin-Version"] = pluginVersion
+        attributes["Plugin-Provider"] = pluginProvider
+    }
+}
+
+tasks.register("plugin", Jar) {
+    archiveBaseName.set("plugin-" + pluginId + "-" + pluginVersion)
+
+    into("classes") {
+        with(tasks.named("jar").get())
+    }
+    dependsOn(configurations.runtimeClasspath)
+    into("lib") {
+        from({
+            configurations.runtimeClasspath
+                    .filter { it.name.endsWith("jar") }
+        })
+    }
+    archiveExtension = 'zip'
+}
+
+test {
+    useJUnitPlatform()
+}
