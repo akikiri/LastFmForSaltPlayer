@@ -25,6 +25,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
     private var currentPosition = 0L
     private var duration = 0L
     private var hasScrobbled = false
+    private var isDurationCalculated = false
 
 
     /**
@@ -32,8 +33,9 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      * 返回 null 表示使用默认逻辑
      */
     override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
-        hasScrobbled = false
+        resetScrobbleState()
         currentMediaItem = mediaItem
+        isDurationCalculated = false
         submitNowPlaying(mediaItem.artist, mediaItem.title)
 
         // 这里可以实现自定义歌词加载逻辑
@@ -48,19 +50,48 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      */
     override fun onPositionUpdated(position: Long) {
         this.currentPosition = position
-        currentMediaItem?.let { duration = getDurationSeconds(it.path) }
+        // 延迟计算时长，避免频繁 I/O 操作
+        if (!isDurationCalculated && currentMediaItem != null) {
+            duration = getDurationSeconds(currentMediaItem!!.path)
+            isDurationCalculated = true
+        }
+
         val positionInSeconds = position / 1000
-        // 如果position不为空且超过当前播放进度的50%且未提交scrobble，执行scrobble
-        if (currentMediaItem != null &&
-            duration > 0 &&
-            positionInSeconds >= duration / 2 &&
-            !hasScrobbled
-        ) {
-            hasScrobbled = true
-            submitScrobble(currentMediaItem!!.artist, currentMediaItem!!.title)
+
+        // 优化 scrobble 条件检查
+        if (shouldScrobble(positionInSeconds)) {
+            performScrobble()
         }
     }
 
+    /**
+     * 重置 scrobble 状态
+     */
+    private fun resetScrobbleState() {
+        hasScrobbled = false
+        isDurationCalculated = false
+        duration = 0L
+    }
+
+    /**
+     * 执行 scrobble 操作
+     */
+    private fun performScrobble() {
+        currentMediaItem?.let { mediaItem ->
+            hasScrobbled = true
+            submitScrobble(mediaItem.artist, mediaItem.title)
+        }
+    }
+
+    /**
+     * 检查是否应该执行 scrobble
+     */
+    private fun shouldScrobble(positionInSeconds: Long): Boolean {
+        return currentMediaItem != null &&
+                duration > 0 &&
+                positionInSeconds >= duration / 2 &&
+                !hasScrobbled
+    }
 
 
     /**
