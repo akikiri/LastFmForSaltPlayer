@@ -81,17 +81,51 @@ public class LastFmService {
         }
     }
 
-    /** 更新 Now Playing */
+    /** 更新 Now Playing - 带重试机制 */
     public void nowPlaying(String artist, String track) throws Exception {
-        client.updateNowPlaying(artist, track);
+        executeWithRetry(() -> {
+            try {
+                client.updateNowPlaying(artist, track);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, "nowPlaying");
     }
 
-    /** 自动时间戳的 scrobble */
+    /** 自动时间戳的 scrobble - 带重试机制 */
     public void scrobble(String artist, String track) throws Exception {
-        client.scrobble(new ScrobbleTrack(
-                artist,
-                track,
-                System.currentTimeMillis() / 1000
-        ));
+        executeWithRetry(() -> {
+            try {
+                client.scrobble(new ScrobbleTrack(
+                        artist,
+                        track,
+                        System.currentTimeMillis() / 1000
+                ));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }, "scrobble");
+    }
+    private void executeWithRetry(Runnable apiCall, String operation) throws Exception {
+        int maxRetries = 3;
+        int retryDelay = 1000; // 1 second
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                apiCall.run();
+                return;
+            } catch (Exception e) {
+                if (attempt == maxRetries) {
+                    throw e;
+                }
+
+                try {
+                    Thread.sleep((long) retryDelay * attempt); // 递增延迟
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Operation interrupted", ie);
+                }
+            }
+        }
     }
 }

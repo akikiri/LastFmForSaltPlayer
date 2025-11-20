@@ -29,7 +29,7 @@ java {
 }
 def pluginClass = "com.akikiri.MainPlugin"
 def pluginId = "akikiri_LastFm_scrobble"
-def pluginVersion = "0.0.2"
+def pluginVersion = "0.0.3"
 def pluginProvider = "akikiri"
 def PluginOpenSourceUrl="https://github.com/akikiri/LastFmForSaltPlayer"
 def PluginDescription="LastFmForSaltPlayer"
