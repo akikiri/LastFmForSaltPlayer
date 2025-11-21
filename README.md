@@ -1,6 +1,6 @@
 # Last.fm Scrobble 插件 for Salt Player
 
-此插件为 [Salt Player for Windows](https://moriafly.com/program/spw.html "访问Salt Player for Windows") 添加 Last.fm 音乐记录功能，可自动将您的播放记录提交到 Last.fm。
+此插件为 [Salt Player for Windows](https://moriafly.com/program/spw.html "访问Salt Player for Windows") 添加 [Last.fm](https://Last.fm "访问Last.fm") 音乐记录功能，可自动将您的播放记录提交到 Last.fm，使用Last.fm Scrobbling 2.0 规范。
 
 ## 使用说明
 
