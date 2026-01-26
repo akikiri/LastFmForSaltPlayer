@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.pf4j.Extension
+import java.util.logging.Logger
 
 /**
  * 播放扩展示例
@@ -21,6 +22,8 @@ import org.pf4j.Extension
  */
 @Extension
 class PlaybackExtensionExample : PlaybackExtensionPoint {
+    private val logger = Logger.getLogger(PlaybackExtensionExample::class.java.name)
+    
     private var currentMediaItem: PlaybackExtensionPoint.MediaItem? = null
     private var currentPosition = 0L
     private var duration = 0L
@@ -33,6 +36,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      * 返回 null 表示使用默认逻辑
      */
     override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
+        logger.info("开始加载歌曲: ${mediaItem.title} - ${mediaItem.artist}")
         resetScrobbleState()
         currentMediaItem = mediaItem
         isDurationCalculated = false
@@ -54,6 +58,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
         if (!isDurationCalculated && currentMediaItem != null) {
             duration = getDurationSeconds(currentMediaItem!!.path)
             isDurationCalculated = true
+            logger.info("计算歌曲时长: ${duration}秒")
         }
 
         val positionInSeconds = position / 1000
@@ -68,6 +73,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      * 重置 scrobble 状态
      */
     private fun resetScrobbleState() {
+        logger.info("重置 scrobble 状态")
         hasScrobbled = false
         isDurationCalculated = false
         duration = 0L
@@ -78,6 +84,7 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      */
     private fun performScrobble() {
         currentMediaItem?.let { mediaItem ->
+            logger.info("执行 scrobble: ${mediaItem.title} - ${mediaItem.artist}")
             hasScrobbled = true
             submitScrobble(mediaItem.artist, mediaItem.title)
         }
@@ -87,26 +94,49 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      * 检查是否应该执行 scrobble
      */
     private fun shouldScrobble(positionInSeconds: Long): Boolean {
-        return currentMediaItem != null &&
+        // 符合 Last.fm 的 scrobble 规则：
+        // 1. 歌曲播放时间至少 30 秒
+        // 2. 或者歌曲播放了一半以上的时长
+        // 3. 且只 scrobble 一次
+        val scrobbleThreshold = Math.max(30, duration / 2)
+        
+        val shouldScrobble = currentMediaItem != null &&
                 duration > 0 &&
-                positionInSeconds >= duration / 2 &&
+                positionInSeconds >= scrobbleThreshold &&
                 !hasScrobbled
+        
+        if (shouldScrobble) {
+            logger.info("满足 scrobble 条件: 播放位置 ${positionInSeconds}秒, 阈值 ${scrobbleThreshold}秒")
+        }
+        
+        return shouldScrobble
     }
 
+
+    /**
+     * 异步执行 Last.fm API 调用
+     */
+    private fun executeLastFmApi(actionName: String, onError: (() -> Unit)? = null, action: suspend (LastFmService) -> Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val lastFm: LastFmService = LastFmService.defaultInstance()
+                action(lastFm)
+                logger.info("${actionName} 操作成功")
+//                WorkshopApi.ui.toast("提交${actionName} 成功", WorkshopApi.Ui.ToastType.Success)
+            } catch (e: Exception) {
+                logger.severe("${actionName} 操作失败: ${e.message}")
+                onError?.invoke()
+                WorkshopApi.ui.toast("提交${actionName} 失败", WorkshopApi.Ui.ToastType.Error)
+            }
+        }
+    }
 
     /**
      * 异步提交 scrobble 信息
      */
     private fun submitScrobble(artist: String, title: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val lastFm: LastFmService = LastFmService.defaultInstance()
-                lastFm.scrobble(artist, title)
-//                WorkshopApi.ui.toast("提交scrobble 成功", WorkshopApi.Ui.ToastType.Success)
-            } catch (e: Exception) {
-                hasScrobbled = false
-                WorkshopApi.ui.toast("提交scrobble 失败", WorkshopApi.Ui.ToastType.Error)
-            }
+        executeLastFmApi("scrobble", { hasScrobbled = false }) {
+            it.scrobble(artist, title)
         }
     }
 
@@ -114,14 +144,8 @@ class PlaybackExtensionExample : PlaybackExtensionPoint {
      * 异步提交 now playing 信息
      */
     private fun submitNowPlaying(artist: String, title: String) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val lastFm: LastFmService = LastFmService.defaultInstance()
-                lastFm.nowPlaying(artist, title)
-//                WorkshopApi.ui.toast("提交nowplaying 成功", WorkshopApi.Ui.ToastType.Success)
-            } catch (e: Exception) {
-                WorkshopApi.ui.toast("提交nowplaying 失败", WorkshopApi.Ui.ToastType.Error)
-            }
+        executeLastFmApi("nowplaying") {
+            it.nowPlaying(artist, title)
         }
     }
 }

@@ -11,8 +11,14 @@ public class LastFmClient {
     private final String apiSecret;
 
     private final SessionStore sessionStore;
-    private final OkHttpClient http = new OkHttpClient();
     private final Gson gson = new Gson();
+    
+    // 使用静态单例模式创建 OkHttpClient 实例
+    private static final OkHttpClient http = new OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
 
     private static final String API_URL = "https://ws.audioscrobbler.com/2.0/";
 
