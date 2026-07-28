@@ -12,12 +12,13 @@ class MainPlugin(
     pluginContext: PluginContext
 ) : SpwPlugin(pluginContext) {
     override fun start() {
-        WorkshopApi.ui.toast("插件已启动", WorkshopApi.Ui.ToastType.Success)
-        println(pluginContext.toString())
+        PluginRuntime.start()
+        WorkshopApi.ui.toast("Last.fm Scrobbler 已启动", WorkshopApi.Ui.ToastType.Success)
     }
 
     override fun stop() {
-        WorkshopApi.ui.toast("插件已停止", WorkshopApi.Ui.ToastType.Warning)
+        PluginRuntime.stop()
+        WorkshopApi.ui.toast("Last.fm Scrobbler 已停止", WorkshopApi.Ui.ToastType.Warning)
     }
 
     override fun delete() {

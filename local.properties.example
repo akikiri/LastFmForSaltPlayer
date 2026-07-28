@@ -1,0 +1,4 @@
+# Copy this file to local.properties before building.
+# The real file is ignored by Git.
+lastfm.api.key=your_32_character_api_key
+lastfm.api.secret=your_32_character_shared_secret

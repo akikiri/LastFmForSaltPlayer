@@ -1,26 +1,26 @@
 plugins {
     id 'java'
-    id 'org.jetbrains.kotlin.jvm' version '2.0.21'
-    id 'org.jetbrains.kotlin.kapt' version '2.0.21'
+    id 'org.jetbrains.kotlin.jvm' version '2.3.0'
 }
 
 
 repositories {
+    google()
     mavenCentral()
-    maven { url 'https://jitpack.io' }
+    maven { url = uri('https://jitpack.io') }
 }
 
 dependencies {
-    compileOnly 'org.jetbrains.kotlin:kotlin-stdlib'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.3.0'
     compileOnly libs.spw.workshop.api
-    kapt libs.spw.workshop.api
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.google.code.gson:gson:2.8.9'
+    implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'net.jthink:jaudiotagger:3.0.1'
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
 
 }
 java {
@@ -29,10 +29,34 @@ java {
 }
 def pluginClass = "com.akikiri.MainPlugin"
 def pluginId = "akikiri_LastFm_scrobble"
-def pluginVersion = "0.0.5"
+def pluginVersion = "0.1.0"
 def pluginProvider = "akikiri"
 def PluginOpenSourceUrl="https://github.com/akikiri/LastFmForSaltPlayer"
 def PluginDescription="LastFmForSaltPlayer"
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
+def lastFmApiKey = providers.gradleProperty("lastfm.api.key")
+        .orElse(providers.environmentVariable("LASTFM_API_KEY"))
+        .orElse(localProperties.getProperty("lastfm.api.key", ""))
+def lastFmApiSecret = providers.gradleProperty("lastfm.api.secret")
+        .orElse(providers.environmentVariable("LASTFM_API_SECRET"))
+        .orElse(localProperties.getProperty("lastfm.api.secret", ""))
+
+tasks.named("processResources") {
+    inputs.property("lastFmApiKey", lastFmApiKey)
+    inputs.property("lastFmApiSecret", lastFmApiSecret)
+    filesMatching("lastfm.properties") {
+        expand(
+                lastfmApiKey: lastFmApiKey.get(),
+                lastfmApiSecret: lastFmApiSecret.get()
+        )
+    }
+}
 
 tasks.named("jar") {
     manifest {
