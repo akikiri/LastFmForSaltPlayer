@@ -41,7 +41,7 @@ configurations.runtimeClasspath {
 spmod { config ->
     config.PluginClass = 'com.akikiri.MainPlugin'
     config.PluginId = 'akikiri_LastFm_scrobble'
-    config.PluginVersion = '0.2.0'
+    config.PluginVersion = '0.2.1'
     config.PluginProvider = 'akikiri'
     config.PluginName = 'Last.fm Scrobbler'
     config.PluginOpenSourceUrl = 'https://github.com/akikiri/LastFmForSaltPlayer'

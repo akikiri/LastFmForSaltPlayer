@@ -5,7 +5,7 @@
 A personal-use Last.fm scrobbling plugin for Salt Player for Windows, built on
 [spw-workshop-api](https://github.com/Moriafly/spw-workshop-api) `0.1.0-dev23`.
 
-Plugin version: `0.2.0`. Requires Salt Player for Windows `1.19.0` or later.
+Plugin version: `0.2.1`. Requires Salt Player for Windows `1.19.0` or later.
 
 ## Features
 
@@ -88,7 +88,7 @@ you revoke the application's access in your Last.fm settings.
 
 The official Workshop Gradle plugin creates:
 
-`build/libs/plugin-akikiri_LastFm_scrobble-0.2.0.spmod`
+`build/libs/plugin-akikiri_LastFm_scrobble-0.2.1.spmod`
 
 Credentials can also be supplied through the Gradle properties `lastfm.api.key` and
 `lastfm.api.secret`, or the environment variables `LASTFM_API_KEY` and `LASTFM_API_SECRET`.
@@ -115,5 +115,8 @@ them so it can call the Last.fm API.
   independently of Now Playing requests.
 - `LoginController` handles settings actions and time-limited authorization checks;
   playback is not responsible for triggering sign-in.
-- Sign-in and queue files are stored in
-  `%APPDATA%/Salt Player for Windows/workshop/data/`, retaining the previous session-file location.
+- Sign-in and queue files are stored in the host-managed plugin data directory, obtained
+  from the parent of `ConfigHelper.getConfigPath()` rather than a hard-coded system path.
+  Files in the old shared directory are not migrated, read, or deleted. If the new
+  directory has no sign-in state, authorize the plugin again; old pending records are
+  not imported. Subsequent sign-in state and pending records persist normally in the new directory.

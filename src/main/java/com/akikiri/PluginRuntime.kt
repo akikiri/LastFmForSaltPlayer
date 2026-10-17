@@ -4,7 +4,6 @@ package com.akikiri
 
 import com.xuncorp.spw.workshop.api.PluginPermission
 import com.xuncorp.spw.workshop.api.WorkshopApi
-import java.nio.file.Path
 import java.util.logging.Logger
 
 internal object PluginRuntime {
@@ -20,7 +19,7 @@ internal object PluginRuntime {
         val credentials = CredentialsLoader.load()
         val gateway = LastFmApiClient(credentials)
         try {
-            val directory = dataDirectory()
+            val directory = PluginDataDirectory.prepare(configManager.getConfig().getConfigPath())
             val auth = AuthManager(gateway, FileSessionStore(directory.resolve("Last_Fm_Session.json")),
                 DesktopBrowserLauncher(), applicationKey = credentials.apiKey)
             val instance = ScrobblerEngine(gateway, auth,
@@ -58,10 +57,6 @@ internal object PluginRuntime {
         val current = engine
         if (current == null) notify("请先启用 Last.fm 插件并授予音乐库读取权限") else action(current)
     }
-
-    private fun dataDirectory(): Path = (System.getenv("APPDATA")?.takeIf(String::isNotBlank)?.let(Path::of)
-        ?: Path.of(System.getProperty("user.home"), "AppData", "Roaming"))
-        .resolve(Path.of("Salt Player for Windows", "workshop", "data"))
 
     private fun notify(message: String) {
         Logger.getLogger(PluginRuntime::class.java.name).info(message)

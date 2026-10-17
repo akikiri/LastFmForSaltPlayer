@@ -5,7 +5,7 @@
 一个供个人使用的 Salt Player for Windows Last.fm Scrobble 插件，基于
 [spw-workshop-api](https://github.com/Moriafly/spw-workshop-api) `0.1.0-dev23`。
 
-插件版本 `0.2.0`，需要 Salt Player for Windows `1.19.0` 或更新版本。
+插件版本 `0.2.1`，需要 Salt Player for Windows `1.19.0` 或更新版本。
 
 ## 功能
 
@@ -40,7 +40,7 @@
    ```
 
 插件包由官方 Workshop Gradle 插件生成在
-`build/libs/plugin-akikiri_LastFm_scrobble-0.2.0.spmod`。
+`build/libs/plugin-akikiri_LastFm_scrobble-0.2.1.spmod`。
 
 也可以通过 Gradle 属性 `lastfm.api.key`、`lastfm.api.secret`，或者环境变量
 `LASTFM_API_KEY`、`LASTFM_API_SECRET` 提供凭据。真实凭据不会被 Git 跟踪，但
@@ -77,4 +77,6 @@ Last.fm Token 有效期为 60 分钟。Session Key 默认长期有效，除非�
 - `PendingScrobbles` 将达到条件的记录原子保存到 `Last_Fm_Pending.json`，收到成功确认后移除；
   `ScrobbleSubmitter` 按时间顺序发送，网络重试与 Now Playing 相互独立。
 - `LoginController` 独立处理配置按钮和有时限的授权检查，歌曲播放不负责触发登录。
-- 登录和队列文件位于 `%APPDATA%/Salt Player for Windows/workshop/data/`，沿用旧版 Session 文件路径。
+- 登录和队列文件保存在宿主管理的插件数据目录中，通过 `ConfigHelper.getConfigPath()` 的父目录定位，
+  不再自行拼接系统路径。不迁移、读取或删除旧版公共目录的数据；新目录没有登录状态时需要重新授权，
+  旧位置的待提交记录不会导入。之后的登录状态和待提交队列会在新目录正常持久化。
