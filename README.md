@@ -1,5 +1,7 @@
 # Last.fm Scrobbler for Salt Player
 
+[English](README_en.md)
+
 一个供个人使用的 Salt Player for Windows Last.fm Scrobble 插件，基于
 [spw-workshop-api](https://github.com/Moriafly/spw-workshop-api) `0.1.0-dev23`。
 
