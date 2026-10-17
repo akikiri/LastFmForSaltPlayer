@@ -29,4 +29,18 @@ class SessionStoreTest {
 
         assertEquals(AuthState(), store.load())
     }
+
+    @Test
+    fun `damaged session is preserved and allows reauthorization`() {
+        val path = temporaryDirectory.resolve("session.json")
+        java.nio.file.Files.writeString(path, "{broken")
+        val store = FileSessionStore(path)
+        assertEquals(AuthState(), store.load())
+        org.junit.jupiter.api.Assertions.assertFalse(java.nio.file.Files.exists(path))
+        java.nio.file.Files.list(temporaryDirectory).use { files ->
+            org.junit.jupiter.api.Assertions.assertTrue(files.anyMatch { it.fileName.toString().startsWith("session.json.corrupt-") })
+        }
+        store.save(AuthState(sessionKey = "new-session"))
+        assertEquals("new-session", store.load().sessionKey)
+    }
 }

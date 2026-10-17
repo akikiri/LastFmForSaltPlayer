@@ -1,6 +1,7 @@
 package com.akikiri
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.AfterEach
@@ -37,7 +38,6 @@ class LastFmApiClientTest {
         client.scrobble(
             sessionKey = "session",
             track = ScrobbleTrack(
-                generation = 1,
                 metadata = TrackMetadata("Track", "Artist", "Album", "Album Artist"),
                 startedAtEpochSeconds = 1_700_000_000,
                 durationSeconds = 180,
@@ -72,18 +72,59 @@ class LastFmApiClientTest {
     }
 
     @Test
-    fun `temporary LastFm error is retried`() = runBlocking {
+    fun `now playing failure is not retried`() = runBlocking {
         server.enqueue(MockResponse().setBody("""{"error":16,"message":"Temporary"}"""))
         server.enqueue(MockResponse().setBody("""{"nowplaying":{}}"""))
         val client = client()
 
-        client.updateNowPlaying(
-            sessionKey = "session",
-            track = TrackMetadata("Track", "Artist"),
-            durationSeconds = null,
-        )
+        assertThrows(LastFmApiException::class.java) {
+            runBlocking { client.updateNowPlaying("session", TrackMetadata("Track", "Artist"), null) }
+        }
+        assertEquals(1, server.requestCount)
+    }
 
+    @Test
+    fun `filtered now playing is reported as rejection`() {
+        server.enqueue(MockResponse().setBody(
+            """{"nowplaying":{"ignoredMessage":{"code":"1","#text":"Artist was ignored"}}}""",
+        ))
+        assertThrows(LastFmApiException::class.java) {
+            runBlocking { client().updateNowPlaying("session", TrackMetadata("Track", "Artist"), 40) }
+        }
+    }
+
+    @Test
+    fun `scrobble temporary failure is retried with the same timestamp`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"error":16,"message":"Temporary"}"""))
+        server.enqueue(MockResponse().setBody("""{"scrobbles":{"@attr":{"accepted":1,"ignored":0}}}"""))
+        client().scrobble("session", ScrobbleTrack(TrackMetadata("Track", "Artist"), 123, 40))
         assertEquals(2, server.requestCount)
+        repeat(2) { assertTrue(server.takeRequest().body.readUtf8().contains("timestamp=123")) }
+    }
+
+    @Test
+    fun `session response contains key and username`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"session":{"key":"session","name":"listener"}}"""))
+        assertEquals(LastFmSession("session", "listener"), client().requestSessionKey("token"))
+    }
+
+    @Test
+    fun `coroutine cancellation promptly cancels a waiting HTTP call`() = runBlocking {
+        val release = java.util.concurrent.CountDownLatch(1)
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                release.await(3, java.util.concurrent.TimeUnit.SECONDS)
+                return MockResponse().setBody("""{"nowplaying":{}}""")
+            }
+        }
+        val task = async(kotlinx.coroutines.Dispatchers.IO) {
+            client().updateNowPlaying("session", TrackMetadata("Track", "Artist"), 40)
+        }
+        try {
+            org.junit.jupiter.api.Assertions.assertNotNull(server.takeRequest(2, java.util.concurrent.TimeUnit.SECONDS))
+            kotlinx.coroutines.withTimeout(1_000) { task.cancel(); task.join() }
+            assertTrue(task.isCancelled)
+        } finally { release.countDown() }
     }
 
     private fun client(): LastFmApiClient = LastFmApiClient(

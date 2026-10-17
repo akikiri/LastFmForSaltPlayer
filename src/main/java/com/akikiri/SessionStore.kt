@@ -14,6 +14,8 @@ internal data class AuthState(
     val sessionKey: String? = null,
     val token: String? = null,
     val tokenCreatedAtEpochSeconds: Long? = null,
+    val username: String? = null,
+    val applicationKey: String? = null,
 )
 
 internal interface SessionStore {
@@ -40,7 +42,10 @@ internal class FileSessionStore(
         try {
             gson.fromJson(json, AuthState::class.java) ?: AuthState()
         } catch (exception: JsonSyntaxException) {
-            throw IllegalStateException("Last.fm Session 文件已损坏", exception)
+            Files.move(path, path.resolveSibling("${path.fileName}.corrupt-${java.util.UUID.randomUUID()}"))
+            java.util.logging.Logger.getLogger(FileSessionStore::class.java.name)
+                .warning("Last.fm Session 文件损坏，已保留副本，请重新授权")
+            AuthState()
         }
     }
 

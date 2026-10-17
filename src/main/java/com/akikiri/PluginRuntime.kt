@@ -1,196 +1,70 @@
+@file:OptIn(com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi::class)
+
 package com.akikiri
 
-import com.xuncorp.spw.workshop.api.PlaybackExtensionPoint
+import com.xuncorp.spw.workshop.api.PluginPermission
 import com.xuncorp.spw.workshop.api.WorkshopApi
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import java.nio.file.Path
-import java.util.logging.Level
 import java.util.logging.Logger
 
 internal object PluginRuntime {
-    private val logger = Logger.getLogger(PluginRuntime::class.java.name)
-    private val tracker = PlaybackTracker()
-    private val durationReader: AudioDurationReader = JaudiotaggerDurationReader()
-    private val lifecycleLock = Any()
+    @Volatile private var engine: ScrobblerEngine? = null
+    private var settings: PluginSettings? = null
 
-    @Volatile
-    private var scope: CoroutineScope? = null
-
-    @Volatile
-    private var coordinator: LastFmCoordinator? = null
-
-    fun start() {
-        synchronized(lifecycleLock) {
-            if (scope != null) {
-                return
-            }
-
+    @Synchronized fun start() {
+        if (engine != null) return
+        check(WorkshopApi.manager.isPermissionGranted(PluginPermission.LIBRARY_READ)) {
+            "请授予 Last.fm 插件音乐库读取权限"
+        }
+        val configManager = WorkshopApi.manager.createConfigManager()
+        val credentials = CredentialsLoader.load()
+        val gateway = LastFmApiClient(credentials)
+        try {
+            val directory = dataDirectory()
+            val auth = AuthManager(gateway, FileSessionStore(directory.resolve("Last_Fm_Session.json")),
+                DesktopBrowserLauncher(), applicationKey = credentials.apiKey)
+            val instance = ScrobblerEngine(gateway, auth,
+                PendingScrobbles(FileScrobbleStore(directory.resolve("Last_Fm_Pending.json"))),
+                PlayerTrackReader(), ::notify)
+            engine = instance
+            val binding = PluginSettings(configManager, instance::setLibraryOnly)
             try {
-                val credentials = CredentialsLoader.load()
-                val gateway = LastFmApiClient(credentials)
-                val authManager = AuthManager(
-                    gateway = gateway,
-                    store = FileSessionStore(defaultSessionPath()),
-                    browserLauncher = DesktopBrowserLauncher(),
-                )
-                coordinator = LastFmCoordinator(gateway, authManager)
-                scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+                binding.start()
+                settings = binding
+                instance.start()
             } catch (exception: Exception) {
-                coordinator = null
-                scope = null
-                logger.log(Level.SEVERE, "Last.fm Scrobbler 初始化失败", exception)
-                notify("Last.fm 配置无效：${exception.message}", WorkshopApi.Ui.ToastType.Error)
+                settings = null; binding.close(); engine = null; instance.close(); throw exception
             }
-        }
+        } catch (exception: Exception) { gateway.close(); throw exception }
     }
 
-    fun stop() {
-        synchronized(lifecycleLock) {
-            scope?.cancel("插件已停止")
-            scope = null
-            coordinator = null
-            tracker.clear()
-        }
+    @Synchronized fun stop() {
+        val old = engine; engine = null
+        try { settings?.close() } finally { settings = null; old?.close() }
+    }
+    fun refresh() { engine?.refresh() }
+    fun onPlayingChanged(value: Boolean) { engine?.onPlayingChanged(value) }
+    fun onPosition(position: Long) { engine?.onPosition(position) }
+    fun onSeek(position: Long) { engine?.onSeek(position) }
+    fun onEnded() { engine?.onEnded() }
+    fun onReady() { engine?.onReady() }
+
+    fun openAuthorization(reset: Boolean = false) = withEngine { it.openAuthorization(reset) }
+    fun checkAuthorization() = withEngine { it.checkAuthorization() }
+    fun status() = withEngine { it.status() }
+    fun retryPending() = withEngine { it.retryPending() }
+
+    private fun withEngine(action: (ScrobblerEngine) -> Unit) {
+        val current = engine
+        if (current == null) notify("请先启用 Last.fm 插件并授予音乐库读取权限") else action(current)
     }
 
-    fun onTrackChanged(mediaItem: PlaybackExtensionPoint.MediaItem) {
-        ensureStarted()
-        val metadata = TrackMetadata(
-            title = mediaItem.title.trim(),
-            artist = mediaItem.artist.trim(),
-            album = mediaItem.album.trim(),
-            albumArtist = mediaItem.albumArtist.trim(),
-        )
-        val snapshot = tracker.beginTrack(metadata)
+    private fun dataDirectory(): Path = (System.getenv("APPDATA")?.takeIf(String::isNotBlank)?.let(Path::of)
+        ?: Path.of(System.getProperty("user.home"), "AppData", "Roaming"))
+        .resolve(Path.of("Salt Player for Windows", "workshop", "data"))
 
-        if (!metadata.isValid) {
-            notify("歌曲缺少标题或艺术家，已跳过 Last.fm", WorkshopApi.Ui.ToastType.Warning)
-            return
-        }
-
-        launchFor(snapshot.generation) {
-            val duration = durationReader.readSeconds(mediaItem.path)
-            val scrobble = tracker.setDuration(snapshot.generation, duration)
-            val currentCoordinator = coordinator ?: return@launchFor
-            val result = currentCoordinator.updateNowPlaying(
-                track = metadata,
-                durationSeconds = duration,
-                isCurrent = { tracker.isCurrent(snapshot.generation) },
-            )
-            handleResult("Now Playing", result)
-            if (scrobble != null) {
-                submitScrobble(scrobble)
-            }
-        }
-    }
-
-    fun onPlayingChanged(isPlaying: Boolean) {
-        tracker.onPlayingChanged(isPlaying)
-    }
-
-    fun onSeek(positionMillis: Long) {
-        tracker.onSeek(positionMillis)
-    }
-
-    fun onPosition(positionMillis: Long) {
-        tracker.onPosition(positionMillis)?.let(::submitScrobble)
-    }
-
-    fun onPlaybackEnded() {
-        tracker.onPlayingChanged(false)
-    }
-
-    private fun submitScrobble(track: ScrobbleTrack) {
-        val currentScope = scope ?: return
-        currentScope.launch {
-            val currentCoordinator = coordinator ?: return@launch
-            try {
-                val result = currentCoordinator.scrobble(track)
-                ensureActive()
-                handleResult("Scrobble", result)
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (exception: Exception) {
-                logger.log(Level.WARNING, "Scrobble 后台任务失败", exception)
-                notify("Scrobble 失败：${exception.message}", WorkshopApi.Ui.ToastType.Error)
-            }
-        }
-    }
-
-    private fun launchFor(generation: Long, block: suspend CoroutineScope.() -> Unit) {
-        val currentScope = scope ?: return
-        currentScope.launch {
-            if (!tracker.isCurrent(generation)) {
-                return@launch
-            }
-            try {
-                block()
-                ensureActive()
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (exception: Exception) {
-                logger.log(Level.WARNING, "Last.fm 后台任务失败", exception)
-                notify("Last.fm 操作失败：${exception.message}", WorkshopApi.Ui.ToastType.Error)
-            }
-        }
-    }
-
-    private fun handleResult(action: String, result: LastFmOperationResult) {
-        when (result) {
-            LastFmOperationResult.Success -> logger.info("$action 成功")
-            LastFmOperationResult.Skipped -> Unit
-            is LastFmOperationResult.AuthorizationRequired -> {
-                if (result.access.newlyCreatedToken) {
-                    val message = if (result.access.browserOpened) {
-                        "请在浏览器完成 Last.fm 授权，下一首歌会自动继续"
-                    } else {
-                        "无法打开浏览器，请访问：${result.access.authorizationUrl}"
-                    }
-                    notify(message, WorkshopApi.Ui.ToastType.Warning)
-                }
-            }
-
-            is LastFmOperationResult.Failed -> {
-                logger.warning("$action 失败：${result.message}")
-                notify("$action 失败：${result.message}", WorkshopApi.Ui.ToastType.Error)
-            }
-        }
-    }
-
-    private fun ensureStarted() {
-        if (scope == null) {
-            start()
-        }
-    }
-
-    private fun defaultSessionPath(): Path {
-        val roaming = System.getenv("APPDATA")
-            ?.takeIf(String::isNotBlank)
-            ?.let(Path::of)
-            ?: Path.of(
-                System.getProperty("user.home"),
-                "AppData",
-                "Roaming",
-            )
-
-        return roaming.resolve(
-            Path.of(
-                "Salt Player for Windows",
-                "workshop",
-                "data",
-                "Last_Fm_Session.json",
-            ),
-        )
-    }
-
-    private fun notify(message: String, type: WorkshopApi.Ui.ToastType) {
-        runCatching { WorkshopApi.ui.toast(message, type) }
-            .onFailure { logger.log(Level.WARNING, "无法显示通知", it) }
+    private fun notify(message: String) {
+        Logger.getLogger(PluginRuntime::class.java.name).info(message)
+        runCatching { WorkshopApi.ui.toast(message, WorkshopApi.Ui.ToastType.Warning) }
     }
 }

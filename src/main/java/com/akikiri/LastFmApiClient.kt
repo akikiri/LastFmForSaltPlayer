@@ -4,15 +4,23 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.random.Random
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 internal class LastFmApiClient(
     private val credentials: LastFmCredentials,
@@ -38,7 +46,7 @@ internal class LastFmApiClient(
         response.string("token")
     }
 
-    override suspend fun requestSessionKey(token: String): String = withRetry {
+    override suspend fun requestSessionKey(token: String): LastFmSession = withRetry {
         val response = get(
             mapOf(
                 "method" to "auth.getSession",
@@ -46,7 +54,8 @@ internal class LastFmApiClient(
                 "token" to token,
             ),
         )
-        response.objectValue("session").string("key")
+        val session = response.objectValue("session")
+        LastFmSession(session.string("key"), session.get("name")?.asString.orEmpty())
     }
 
     override suspend fun updateNowPlaying(
@@ -55,7 +64,7 @@ internal class LastFmApiClient(
         durationSeconds: Long?,
     ) {
         require(track.isValid) { "歌曲标题和艺术家不能为空" }
-        withRetry {
+        run {
             val parameters = mutableMapOf(
                 "method" to "track.updateNowPlaying",
                 "artist" to track.artist,
@@ -70,6 +79,11 @@ internal class LastFmApiClient(
             val response = post(parameters)
             if (!response.has("nowplaying")) {
                 throw LastFmApiException(null, "Last.fm 未确认 Now Playing", false)
+            }
+            val ignored = response.objectValue("nowplaying").getAsJsonObject("ignoredMessage")
+            if (ignored != null && ignored.get("code")?.asInt != 0) {
+                throw LastFmApiException(null, ignored.get("#text")?.asString
+                    ?: "Last.fm 忽略了 Now Playing", false)
             }
         }
     }
@@ -104,7 +118,7 @@ internal class LastFmApiClient(
         }
     }
 
-    private fun get(unsignedParameters: Map<String, String>): JsonObject {
+    private suspend fun get(unsignedParameters: Map<String, String>): JsonObject {
         val parameters = signed(unsignedParameters)
         val url = apiUrl.newBuilder().apply {
             parameters.forEach(::addQueryParameter)
@@ -112,7 +126,7 @@ internal class LastFmApiClient(
         return execute(Request.Builder().url(url).get().build())
     }
 
-    private fun post(unsignedParameters: Map<String, String>): JsonObject {
+    private suspend fun post(unsignedParameters: Map<String, String>): JsonObject {
         val parameters = signed(unsignedParameters)
         val body = FormBody.Builder().apply {
             parameters.forEach(::add)
@@ -127,8 +141,25 @@ internal class LastFmApiClient(
             put("format", "json")
         }
 
-    private fun execute(request: Request): JsonObject {
-        httpClient.newCall(request).execute().use { response ->
+    private suspend fun execute(request: Request): JsonObject = suspendCancellableCoroutine { continuation ->
+        val call = httpClient.newCall(request)
+        continuation.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                continuation.resumeWithException(e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                try {
+                    response.use { continuation.resume(parseResponse(it)) }
+                } catch (exception: Exception) {
+                    continuation.resumeWithException(exception)
+                }
+            }
+        })
+    }
+
+    private fun parseResponse(response: Response): JsonObject {
             val responseBody = response.body?.string()
                 ?: throw LastFmApiException(
                     errorCode = null,
@@ -161,18 +192,18 @@ internal class LastFmApiClient(
             }
 
             return json
-        }
     }
 
-    private suspend fun <T> withRetry(block: () -> T): T {
+    private suspend fun <T> withRetry(block: suspend () -> T): T {
         var lastFailure: Throwable? = null
 
         repeat(retryPolicy.maxAttempts) { attempt ->
+            currentCoroutineContext().ensureActive()
             try {
                 return block()
             } catch (exception: CancellationException) {
                 throw exception
-            } catch (exception: Throwable) {
+            } catch (exception: Exception) {
                 lastFailure = exception
                 val retryable = when (exception) {
                     is LastFmApiException -> exception.retryable
@@ -190,6 +221,12 @@ internal class LastFmApiClient(
         }
 
         throw checkNotNull(lastFailure)
+    }
+
+    override fun close() {
+        httpClient.dispatcher.cancelAll()
+        httpClient.connectionPool.evictAll()
+        httpClient.dispatcher.executorService.shutdown()
     }
 
     private fun JsonObject.string(key: String): String =
@@ -210,6 +247,7 @@ internal class LastFmApiClient(
         private val RETRYABLE_ERROR_CODES = setOf(11, 16, 29)
 
         private fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+            .retryOnConnectionFailure(false)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)

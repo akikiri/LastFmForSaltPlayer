@@ -1,67 +1,41 @@
 package com.akikiri
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.io.IOException
 
 internal class LastFmCoordinator(
     private val gateway: LastFmGateway,
     private val authManager: AuthManager,
 ) {
-    private val operationMutex = Mutex()
-
-    suspend fun updateNowPlaying(
-        track: TrackMetadata,
-        durationSeconds: Long?,
-        isCurrent: () -> Boolean,
-    ): LastFmOperationResult = operationMutex.withLock {
-        perform(isCurrent) { sessionKey ->
-            gateway.updateNowPlaying(sessionKey, track, durationSeconds)
-        }
-    }
+    suspend fun updateNowPlaying(track: TrackMetadata, durationSeconds: Long?, isCurrent: () -> Boolean)
+        : LastFmOperationResult = perform(isCurrent) { gateway.updateNowPlaying(it, track, durationSeconds) }
 
     suspend fun scrobble(track: ScrobbleTrack): LastFmOperationResult =
-        operationMutex.withLock {
-            perform(isCurrent = { true }) { sessionKey ->
-                gateway.scrobble(sessionKey, track)
-            }
-        }
+        perform({ true }) { gateway.scrobble(it, track) }
 
-    private suspend fun perform(
-        isCurrent: () -> Boolean,
-        operation: suspend (String) -> Unit,
-    ): LastFmOperationResult {
-        if (!isCurrent()) {
-            return LastFmOperationResult.Skipped
-        }
-
+    private suspend fun perform(isCurrent: () -> Boolean, operation: suspend (String) -> Unit): LastFmOperationResult {
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent()) return LastFmOperationResult.Skipped
+        val session = authManager.session() as? SessionAccess.Ready
+            ?: return LastFmOperationResult.AuthorizationRequired()
         return try {
-            when (val access = authManager.session()) {
-                is SessionAccess.Ready -> {
-                    if (!isCurrent()) {
-                        LastFmOperationResult.Skipped
-                    } else {
-                        operation(access.sessionKey)
-                        LastFmOperationResult.Success
-                    }
-                }
-
-                is SessionAccess.WaitingForAuthorization ->
-                    LastFmOperationResult.AuthorizationRequired(access)
-            }
+            if (!isCurrent()) return LastFmOperationResult.Skipped
+            operation(session.sessionKey)
+            currentCoroutineContext().ensureActive()
+            LastFmOperationResult.Success
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: LastFmApiException) {
-            if (exception.errorCode == INVALID_SESSION_KEY) {
-                authManager.invalidateSession()
-            }
-            LastFmOperationResult.Failed(exception.message ?: "Last.fm 请求失败")
+            if (exception.errorCode == 9) {
+                if (authManager.invalidateSession(session.sessionKey)) LastFmOperationResult.AuthorizationRequired(true)
+                else LastFmOperationResult.Skipped
+            } else LastFmOperationResult.Failed(exception.message.orEmpty(), exception.retryable)
+        } catch (exception: IOException) {
+            LastFmOperationResult.Failed(exception.message ?: "网络请求失败", true)
         } catch (exception: Exception) {
             LastFmOperationResult.Failed(exception.message ?: "Last.fm 请求失败")
         }
-    }
-
-    companion object {
-        private const val INVALID_SESSION_KEY = 9
     }
 }

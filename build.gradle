@@ -1,8 +1,8 @@
 plugins {
     id 'java'
-    id 'org.jetbrains.kotlin.jvm' version '2.3.0'
+    id 'org.jetbrains.kotlin.jvm' version '2.4.20'
+    id 'com.xuncorp.spw.workshop' version '0.1.0-dev23'
 }
-
 
 repositories {
     google()
@@ -11,28 +11,44 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.3.0'
+    compileOnly 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
     compileOnly libs.spw.workshop.api
+    testImplementation libs.spw.workshop.api
+    testImplementation 'org.jetbrains.kotlin:kotlin-stdlib:2.4.20'
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.11.0'
-    implementation 'net.jthink:jaudiotagger:3.0.1'
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0"
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+}
 
-}
 java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
-def pluginClass = "com.akikiri.MainPlugin"
-def pluginId = "akikiri_LastFm_scrobble"
-def pluginVersion = "0.1.0"
-def pluginProvider = "akikiri"
-def PluginOpenSourceUrl="https://github.com/akikiri/LastFmForSaltPlayer"
-def PluginDescription="LastFmForSaltPlayer"
+
+kotlin {
+    jvmToolchain(25)
+}
+
+// The host supplies Kotlin; do not package older transitive copies from OkHttp/coroutines.
+configurations.runtimeClasspath {
+    exclude group: 'org.jetbrains.kotlin'
+}
+
+spmod { config ->
+    config.PluginClass = 'com.akikiri.MainPlugin'
+    config.PluginId = 'akikiri_LastFm_scrobble'
+    config.PluginVersion = '0.2.0'
+    config.PluginProvider = 'akikiri'
+    config.PluginName = 'Last.fm Scrobbler'
+    config.PluginOpenSourceUrl = 'https://github.com/akikiri/LastFmForSaltPlayer'
+    config.PluginDescription = 'Last.fm scrobbling using Salt Player metadata'
+    config.PluginHasConfig = true
+    config.PluginPermissions = [com.xuncorp.spw.workshop.gradle.PluginPermission.LIBRARY_READ]
+}
 
 def localProperties = new Properties()
 def localPropertiesFile = rootProject.file("local.properties")
@@ -56,33 +72,6 @@ tasks.named("processResources") {
                 lastfmApiSecret: lastFmApiSecret.get()
         )
     }
-}
-
-tasks.named("jar") {
-    manifest {
-        attributes["Plugin-Class"] = pluginClass
-        attributes["Plugin-Id"] = pluginId
-        attributes["Plugin-Version"] = pluginVersion
-        attributes["Plugin-Provider"] = pluginProvider
-        attributes["Plugin-Open-Source-Url"] = PluginOpenSourceUrl
-        attributes["Plugin-Description"] = PluginDescription
-    }
-}
-
-tasks.register("plugin", Jar) {
-    archiveBaseName.set("plugin-" + pluginId + "-" + pluginVersion)
-
-    into("classes") {
-        with(tasks.named("jar").get())
-    }
-    dependsOn(configurations.runtimeClasspath)
-    into("lib") {
-        from({
-            configurations.runtimeClasspath
-                    .filter { it.name.endsWith("jar") }
-        })
-    }
-    archiveExtension = 'zip'
 }
 
 test {

@@ -1,19 +1,22 @@
-@file:OptIn(UnstableSpwWorkshopApi::class)
 @file:Suppress("unused")
 
 package com.akikiri
 
 import com.xuncorp.spw.workshop.api.PluginContext
 import com.xuncorp.spw.workshop.api.SpwPlugin
-import com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi
 import com.xuncorp.spw.workshop.api.WorkshopApi
 
 class MainPlugin(
     pluginContext: PluginContext
 ) : SpwPlugin(pluginContext) {
     override fun start() {
-        PluginRuntime.start()
-        WorkshopApi.ui.toast("Last.fm Scrobbler 已启动", WorkshopApi.Ui.ToastType.Success)
+        try {
+            PluginRuntime.start()
+            WorkshopApi.ui.toast("Last.fm Scrobbler 已启动", WorkshopApi.Ui.ToastType.Success)
+        } catch (exception: Exception) {
+            WorkshopApi.ui.toast("Last.fm 启动失败：${exception.message}", WorkshopApi.Ui.ToastType.Error)
+            throw exception
+        }
     }
 
     override fun stop() {
@@ -21,11 +24,11 @@ class MainPlugin(
         WorkshopApi.ui.toast("Last.fm Scrobbler 已停止", WorkshopApi.Ui.ToastType.Warning)
     }
 
-    override fun delete() {
-        WorkshopApi.ui.toast("插件已删除", WorkshopApi.Ui.ToastType.Error)
-    }
-
-    override fun update() {
-        WorkshopApi.ui.toast("插件已更新", WorkshopApi.Ui.ToastType.Success)
+    companion object {
+        @JvmStatic fun openAuthorization() = PluginRuntime.openAuthorization()
+        @JvmStatic fun checkAuthorization() = PluginRuntime.checkAuthorization()
+        @JvmStatic fun reauthorize() = PluginRuntime.openAuthorization(reset = true)
+        @JvmStatic fun showStatus() = PluginRuntime.status()
+        @JvmStatic fun retryPending() = PluginRuntime.retryPending()
     }
 }

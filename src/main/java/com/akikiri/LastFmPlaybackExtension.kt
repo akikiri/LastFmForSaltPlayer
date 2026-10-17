@@ -6,7 +6,7 @@ import org.pf4j.Extension
 @Extension
 class LastFmPlaybackExtension : PlaybackExtensionPoint {
     override fun onBeforeLoadLyrics(mediaItem: PlaybackExtensionPoint.MediaItem): String? {
-        PluginRuntime.onTrackChanged(mediaItem)
+        PluginRuntime.refresh()
         return null
     }
 
@@ -27,7 +27,9 @@ class LastFmPlaybackExtension : PlaybackExtensionPoint {
             state == PlaybackExtensionPoint.State.Idle ||
             state == PlaybackExtensionPoint.State.Ended
         ) {
-            PluginRuntime.onPlaybackEnded()
+            PluginRuntime.onEnded()
+        } else if (state == PlaybackExtensionPoint.State.Ready) {
+            PluginRuntime.onReady()
         }
     }
 }

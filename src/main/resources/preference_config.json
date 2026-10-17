@@ -1,0 +1,22 @@
+{
+  "configs": [
+    {
+      "title": "Last.fm 账号与提交",
+      "config": "config.json",
+      "preferences": [
+        {
+          "key": "library_only",
+          "type": "switch",
+          "title": "仅提交音乐库中的音乐",
+          "summary": "仅发送曲库 API 可查到的歌曲收听记录，不影响正在播放状态；默认关闭",
+          "default_value": false
+        },
+        {"type": "button", "title": "登录 / 打开授权页", "summary": "在浏览器授权，插件会自动确认登录", "arrow_type": "none", "on_click": "com.akikiri.MainPlugin.openAuthorization"},
+        {"type": "button", "title": "检查授权", "summary": "完成网页授权后立即检查结果", "arrow_type": "none", "on_click": "com.akikiri.MainPlugin.checkAuthorization"},
+        {"type": "button", "title": "重新授权", "summary": "清除本地登录状态并重新打开 Last.fm 授权页", "arrow_type": "none", "on_click": "com.akikiri.MainPlugin.reauthorize"},
+        {"type": "button", "title": "查看登录与提交状态", "arrow_type": "none", "on_click": "com.akikiri.MainPlugin.showStatus"},
+        {"type": "button", "title": "重试待提交记录", "summary": "重新发送失败的原记录；已确认成功的记录不会重发", "arrow_type": "none", "on_click": "com.akikiri.MainPlugin.retryPending"}
+      ]
+    }
+  ]
+}

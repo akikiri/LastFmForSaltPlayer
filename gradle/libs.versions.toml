@@ -1,5 +1,5 @@
 [versions]
-spw-workshop-api = "0.1.0-dev20"
+spw-workshop-api = "0.1.0-dev23"
 
 [libraries]
-spw-workshop-api = { group = "com.github.Moriafly", name = "spw-workshop-api", version.ref = "spw-workshop-api" }
+spw-workshop-api = { group = "com.github.Moriafly.spw-workshop-api", name = "spw-workshop-api", version.ref = "spw-workshop-api" }
