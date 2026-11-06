@@ -4,6 +4,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import java.io.IOException
+import java.nio.file.Files
 import java.nio.file.Path
 
 class PendingScrobblesTest {
@@ -20,6 +22,74 @@ class PendingScrobblesTest {
         restored.enqueue(track)
         assertEquals(0, restored.size())
         assertEquals(0, PendingScrobbles(store).size())
+    }
+
+    @Test fun `corrupt queue bytes are preserved before an empty queue is opened`() {
+        val path = directory.resolve("pending.json")
+        val invalidQueues = listOf(
+            """[{"track":""".toByteArray(),
+            "[] // trailing comment".toByteArray(),
+            "[null]".toByteArray(),
+            """[{"track":{}}]""".toByteArray(),
+            byteArrayOf(0x80.toByte()),
+        )
+        val backups = mutableSetOf<Path>()
+
+        for (bytes in invalidQueues) {
+            Files.write(path, bytes)
+            assertTrue(PendingScrobbles(FileScrobbleStore(path)).ready().isEmpty())
+            assertFalse(Files.exists(path))
+            val backup = Files.list(directory).use { files ->
+                files.filter { it.fileName.toString().startsWith("pending.json.corrupt-") && it !in backups }
+                    .toList().single()
+            }
+            assertArrayEquals(bytes, Files.readAllBytes(backup))
+            backups.add(backup)
+        }
+        assertTrue(backups.all { Files.exists(it) })
+    }
+
+    @Test fun `failed file save keeps pending record available for persistence retry`() {
+        val path = directory.resolve("pending.json")
+        val queue = PendingScrobbles(FileScrobbleStore(path))
+        val track = track()
+        val existing = Files.createDirectory(path).resolve("keep")
+        Files.writeString(existing, "existing data")
+
+        assertThrows(IOException::class.java) { FileScrobbleStore(path).load() }
+        assertThrows(IOException::class.java) { queue.enqueue(track) }
+        assertEquals("existing data", Files.readString(existing))
+        assertEquals(listOf(path), Files.list(directory).use { it.toList() })
+        assertEquals(listOf(track), queue.ready())
+
+        Files.delete(existing)
+        Files.delete(path)
+        queue.flushStorage()
+        assertEquals(listOf(track), PendingScrobbles(FileScrobbleStore(path)).ready())
+    }
+
+    @Test fun `recovered queue submits pending records after restart without replaying confirmed ones`() = runBlocking {
+        val path = directory.resolve("pending.json")
+        Files.writeString(path, """[{"track":""")
+        val recovered = PendingScrobbles(FileScrobbleStore(path))
+        val first = track()
+        val later = track(200)
+        val blocked = PendingScrobble(track(300), "Rejected")
+        val gateway = FakeGateway()
+        val auth = AuthManager(gateway, MemorySessionStore(AuthState(sessionKey = "session")), BrowserLauncher { true })
+        val coordinator = LastFmCoordinator(gateway, auth)
+
+        recovered.enqueue(first)
+        ScrobbleSubmitter(recovered, coordinator, {}).flush()
+        recovered.enqueue(later)
+        recovered.enqueue(blocked.track)
+        recovered.block(blocked.track.id, requireNotNull(blocked.blockedReason))
+
+        val store = FileScrobbleStore(path)
+        assertEquals(listOf(PendingScrobble(later), blocked), store.load())
+        ScrobbleSubmitter(PendingScrobbles(store), coordinator, {}).flush()
+        assertEquals(listOf(first, later), gateway.submitted)
+        assertEquals(listOf(blocked), FileScrobbleStore(path).load())
     }
 
     @Test fun `temporary failure retains record and next successful flush confirms it`() = runBlocking {
