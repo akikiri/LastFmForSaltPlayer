@@ -24,6 +24,10 @@ Plugin version: `0.2.1`. Requires Salt Player for Windows `1.19.0` or later.
 - Supports Last.fm desktop authorization and persists the Session Key.
 - Uses bounded exponential backoff for temporary Scrobble failures, service downtime,
   and rate limits. Failed records are stored locally and survive restarts.
+- When the pending queue is damaged, the plugin backs up the original bytes to
+  `Last_Fm_Pending.json.corrupt-<SHA-256>` and rewrites the queue with complete, valid records.
+  Identical contents reuse one backup. An unclosed container or string can prevent recovery of later entries.
+- If the file is locked or repair fails, the plugin retries. New records stay in memory until it can reload the original queue and save the merged records.
 - Now Playing requests are not retried. The plugin checks Last.fm's filtering result
   and cancels unfinished requests when playback pauses, the track changes, or the plugin is disabled.
 - Track metadata and duration come exclusively from the player API. The plugin does

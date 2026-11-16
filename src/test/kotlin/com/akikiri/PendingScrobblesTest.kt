@@ -22,6 +22,22 @@ class PendingScrobblesTest {
         assertEquals(0, PendingScrobbles(store).size())
     }
 
+    @Test fun `recovered complete records submit and are not replayed after persisted confirmation`() = runBlocking {
+        val path = directory.resolve("pending.json")
+        val first = track(100)
+        val later = track(200)
+        val json = com.google.gson.Gson()
+        java.nio.file.Files.writeString(path,
+            "[${json.toJson(PendingScrobble(first))},{\"track\": nope},${json.toJson(PendingScrobble(later))},{")
+        val gateway = FakeGateway()
+        val auth = AuthManager(gateway, MemorySessionStore(AuthState(sessionKey = "session")), BrowserLauncher { true })
+        val coordinator = LastFmCoordinator(gateway, auth)
+        ScrobbleSubmitter(PendingScrobbles(FileScrobbleStore(path)), coordinator, {}).flush()
+        ScrobbleSubmitter(PendingScrobbles(FileScrobbleStore(path)), coordinator, {}).flush()
+        assertEquals(listOf(first, later), gateway.submitted)
+        assertTrue(FileScrobbleStore(path).load().isEmpty())
+    }
+
     @Test fun `temporary failure retains record and next successful flush confirms it`() = runBlocking {
         val queue = PendingScrobbles(MemoryScrobbleStore())
         val track = track()
