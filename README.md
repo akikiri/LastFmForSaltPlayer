@@ -5,7 +5,7 @@
 一个供个人使用的 Salt Player for Windows Last.fm Scrobble 插件，基于
 [spw-workshop-api](https://github.com/Moriafly/spw-workshop-api) `0.1.0-dev23`。
 
-插件版本 `0.2.1`，需要 Salt Player for Windows `1.19.0` 或更新版本。
+插件版本 `0.2.2`，需要 Salt Player for Windows `1.19.0` 或更新版本。
 
 ## 功能
 
@@ -42,7 +42,7 @@
    ```
 
 插件包由官方 Workshop Gradle 插件生成在
-`build/libs/plugin-akikiri_LastFm_scrobble-0.2.1.spmod`。
+`build/libs/plugin-akikiri_LastFm_scrobble-0.2.2.spmod`。
 
 也可以通过 Gradle 属性 `lastfm.api.key`、`lastfm.api.secret`，或者环境变量
 `LASTFM_API_KEY`、`LASTFM_API_SECRET` 提供凭据。真实凭据不会被 Git 跟踪，但

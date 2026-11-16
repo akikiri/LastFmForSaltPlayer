@@ -5,7 +5,7 @@
 A personal-use Last.fm scrobbling plugin for Salt Player for Windows, built on
 [spw-workshop-api](https://github.com/Moriafly/spw-workshop-api) `0.1.0-dev23`.
 
-Plugin version: `0.2.1`. Requires Salt Player for Windows `1.19.0` or later.
+Plugin version: `0.2.2`. Requires Salt Player for Windows `1.19.0` or later.
 
 ## Features
 
@@ -92,7 +92,7 @@ you revoke the application's access in your Last.fm settings.
 
 The official Workshop Gradle plugin creates:
 
-`build/libs/plugin-akikiri_LastFm_scrobble-0.2.1.spmod`
+`build/libs/plugin-akikiri_LastFm_scrobble-0.2.2.spmod`
 
 Credentials can also be supplied through the Gradle properties `lastfm.api.key` and
 `lastfm.api.secret`, or the environment variables `LASTFM_API_KEY` and `LASTFM_API_SECRET`.
